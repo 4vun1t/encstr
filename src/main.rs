@@ -1,4 +1,4 @@
-use myobfuscator::{xstr, astr};
+use encstr::{xstr, astr};
 
 fn main() {
     let secret = xstr!("Hello from XOR obfuscation!");
