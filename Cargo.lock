@@ -3,5 +3,5 @@
 version = 4
 
 [[package]]
-name = "myobfuscator"
+name = "encstr"
 version = "0.0.1"
