@@ -245,7 +245,7 @@ const fn add_round_key(state: &mut [u8; 16], rk: &[u8; 16]) {
     }
 }
 
-pub pub const fn aes_encrypt_block(block: &[u8; 16], key: &[u8; 16]) -> [u8; 16] {
+pub const fn aes_encrypt_block(block: &[u8; 16], key: &[u8; 16]) -> [u8; 16] {
     let rk = aes_key_expansion(key);
     let mut state = *block;
 
@@ -267,7 +267,7 @@ pub pub const fn aes_encrypt_block(block: &[u8; 16], key: &[u8; 16]) -> [u8; 16]
     state
 }
 
-pub pub fn aes_decrypt_block(block: &[u8; 16], key: &[u8; 16]) -> [u8; 16] {
+pub fn aes_decrypt_block(block: &[u8; 16], key: &[u8; 16]) -> [u8; 16] {
     let rk = aes_key_expansion(key);
     let mut state = *block;
 
