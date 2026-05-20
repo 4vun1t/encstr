@@ -362,6 +362,98 @@ macro_rules! astr {
     }};
 }
 
+// ── CFG Entanglement: Opaque Predicates ──────────────────────────────────────
+
+#[inline(never)]
+pub fn opaque_true() -> bool {
+    let a = ENTANGLE_SEED.wrapping_mul(0x9e3779b9);
+    let b = (XOR_KEY as u32).wrapping_sub(0x3c6ef372);
+    let c = AES_KEY[0] as u32;
+    let x = a.wrapping_add(b).wrapping_mul(c).wrapping_add(1);
+    let y = (a.wrapping_sub(b) ^ c).wrapping_sub(1);
+    (x ^ x) == (y ^ y)
+}
+
+#[inline(never)]
+pub fn opaque_false() -> bool {
+    let a = ENTANGLE_SEED.wrapping_mul(0x9e3779b9);
+    let b = (XOR_KEY as u32).wrapping_sub(0x3c6ef372);
+    let c = AES_KEY[0] as u32;
+    let x = a.wrapping_add(b).wrapping_mul(c).wrapping_add(1);
+    (x ^ x) == 1
+}
+
+#[cold]
+#[inline(never)]
+pub fn dead_branch() -> ! {
+    panic!("opaque dead branch reached")
+}
+
+// ── CFG Entanglement: Permutation Generator ─────────────────────────────────
+
+pub const fn gen_permutation<const N: usize>(seed: u32) -> [usize; N] {
+    let mut perm = [0usize; N];
+    let mut i = 0;
+    while i < N {
+        perm[i] = i;
+        i += 1;
+    }
+    if N <= 1 {
+        return perm;
+    }
+    let mut state = seed as u64;
+    let mut j = N - 1;
+    loop {
+        state ^= state << 13;
+        state ^= state >> 7;
+        state ^= state << 17;
+        let k = (state as usize) % (j + 1);
+        let tmp = perm[j];
+        perm[j] = perm[k];
+        perm[k] = tmp;
+        if j == 1 {
+            break;
+        }
+        j -= 1;
+    }
+    perm
+}
+
+// ── Control Flow Obfuscation Macro ──────────────────────────────────────────
+
+#[macro_export]
+macro_rules! cobl {
+    ($body:block) => {{
+        if $crate::opaque_true() {
+            $body
+        } else {
+            if $crate::opaque_false() {
+                $crate::dead_branch()
+            } else {
+                unreachable!()
+            }
+        }
+    }};
+}
+
+// ── CFG Entanglement Macro ──────────────────────────────────────────────────
+
+#[macro_export]
+macro_rules! entangle {
+    ([$($f:expr),* $(,)?]) => {{
+        const _N: usize = [$( { stringify!($f); 1usize } ),*].len();
+        const _PERM: [usize; _N] = $crate::gen_permutation::<_N>($crate::ENTANGLE_SEED);
+        let _fns = [$($f),*];
+        let mut _results = Vec::with_capacity(_N);
+        let mut _i: usize = 0;
+        while _i < _N {
+            _results.push(_fns[_PERM[_i]]());
+            _i += 1;
+        }
+        _results
+    }};
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -406,5 +498,95 @@ mod tests {
     fn test_xor_key_constant() {
         let s1 = xstr!("test");
         assert_eq!(s1, "test");
+    }
+
+    #[test]
+    fn test_opaque_true() {
+        assert!(opaque_true());
+    }
+
+    #[test]
+    fn test_opaque_false() {
+        assert!(!opaque_false());
+    }
+
+    #[test]
+    fn test_cobl_preserves_value() {
+        let x = cobl!({ 42 });
+        assert_eq!(x, 42);
+    }
+
+    #[test]
+    fn test_cobl_with_side_effects() {
+        let mut v = Vec::new();
+        cobl!({
+            v.push(1);
+            v.push(2);
+        });
+        assert_eq!(v, vec![1, 2]);
+    }
+
+    #[test]
+    fn test_entangle_preserves_all_values() {
+        fn a() -> i32 { 1 }
+        fn b() -> i32 { 2 }
+        fn c() -> i32 { 3 }
+        let results = entangle!([a, b, c]);
+        assert_eq!(results.len(), 3);
+        let mut sorted = results.clone();
+        sorted.sort();
+        assert_eq!(sorted, vec![1, 2, 3]);
+    }
+
+    #[test]
+    fn test_entangle_single() {
+        fn one() -> i32 { 42 }
+        let results = entangle!([one]);
+        assert_eq!(results, vec![42]);
+    }
+
+    #[test]
+    fn test_entangle_trailing_comma() {
+        fn a() -> &'static str { "hello" }
+        fn b() -> &'static str { "world" }
+        let results = entangle!([a, b,]);
+        assert_eq!(results.len(), 2);
+    }
+
+    #[test]
+    fn test_gen_permutation_identity_for_single() {
+        let perm = gen_permutation::<1>(42);
+        assert_eq!(perm, [0]);
+    }
+
+    #[test]
+    fn test_gen_permutation_zero() {
+        let perm = gen_permutation::<0>(42);
+        assert_eq!(perm.len(), 0);
+    }
+
+    #[test]
+    fn test_gen_permutation_contains_all() {
+        const N: usize = 8;
+        const PERM: [usize; N] = gen_permutation::<N>(0xdeadbeef);
+        let mut sorted = PERM;
+        sorted.sort();
+        let mut expected = [0usize; N];
+        let mut i = 0;
+        while i < N {
+            expected[i] = i;
+            i += 1;
+        }
+        assert_eq!(sorted, expected);
+    }
+
+    #[test]
+    fn test_entangle_seed_stable() {
+        fn f1() -> u32 { 10 }
+        fn f2() -> u32 { 20 }
+        fn f3() -> u32 { 30 }
+        let r1 = entangle!([f1, f2, f3]);
+        let r2 = entangle!([f1, f2, f3]);
+        assert_eq!(r1, r2);
     }
 }

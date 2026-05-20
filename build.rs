@@ -20,20 +20,30 @@ fn main() {
         state as u8
     };
 
+    let mut next_u32 = move || -> u32 {
+        let b0 = next_u8() as u32;
+        let b1 = next_u8() as u32;
+        let b2 = next_u8() as u32;
+        let b3 = next_u8() as u32;
+        b0 | (b1 << 8) | (b2 << 16) | (b3 << 24)
+    };
+
     let xor_key = next_u8();
     let mut aes_key = [0u8; 16];
     for b in &mut aes_key {
         *b = next_u8();
     }
+    let entangle_seed = next_u32();
 
     let fmt_hex = |v: &[u8]| -> String {
         v.iter().map(|b| format!("0x{:02x}", b)).collect::<Vec<_>>().join(", ")
     };
 
     let content = format!(
-        "pub const XOR_KEY: u8 = 0x{:02x};\npub const AES_KEY: [u8; 16] = [{}];\n",
+        "pub const XOR_KEY: u8 = 0x{:02x};\npub const AES_KEY: [u8; 16] = [{}];\npub const ENTANGLE_SEED: u32 = 0x{:08x};\n",
         xor_key,
         fmt_hex(&aes_key),
+        entangle_seed,
     );
 
     fs::write(&dest_path, content).unwrap();
